@@ -1,0 +1,67 @@
+銘柄番号
+現在価格
+決算日まで
+権利落ちまで
+分割日まで
+時価総額
+予想PER
+PBR
+予想EPS
+BPS
+配当性向
+ベータ値
+過去配当額
+過去配当利回り
+平均配当利回り
+現在配当額
+現在配当利回り
+52週安値
+52週高値
+推奨
+アナリスト意見数
+Open
+High
+Low
+Close
+Adj Close
+Volume
+MACD
+Signal_Line
+MACD_Signal_difference
+DI+
+DI-
+DI+DI-_difference
+Parabolic_SAR
+RSI_14
+%K
+Psychological_Line
+RCI_26
+MA_Deviation
+MACD_Percentile
+MACD_Current Deviation
+MACD_Signal_difference_Percentile
+MACD_Signal_difference_Current Deviation
+DI+_Percentile
+DI+_Current Deviation
+DI-_Percentile
+DI-_Current Deviation
+DI+DI-_difference_Percentile
+DI+DI-_difference_Current Deviation
+Parabolic_SAR_Percentile
+Parabolic_SAR_Current Deviation
+RSI_14_Percentile
+RSI_14_Current Deviation
+%K_Percentile
+%K_Current Deviation
+Psychological_Line_Percentile
+Psychological_Line_Current Deviation
+RCI_26_Percentile
+RCI_26_Current Deviation
+MA_Deviation_Percentile
+MA_Deviation_Current Deviation
+MACD_Signal_Line_Last_Cross
+MACD_Signal_Line_Last_Cross_Day
+MACD_Signal_Line_Next_Cross_Day
+DI+_DI-_Last_Cross
+DI+_DI-_Last_Cross_Day
+DI+_DI-_Next_Cross_Day

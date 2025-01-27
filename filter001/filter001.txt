@@ -1,0 +1,49 @@
+
+構造
+-filter001
+  |
+  |-filter1_main.py
+  | {関数fileter1}: 
+  |
+  |-prepare
+  | 銘柄番号のファイルを置く
+  | 想定ファイル5つ：data_j.xls,stocknumber_1month.xlsx,love,haitou,hold,
+  | プログラムファイル1つ:csv_function.py, aho.py
+  |
+  |-result
+  | 結果となるエクセルファイルをおく
+  | 
+  |
+  |
+  |-sub
+  |  |- 決算取り出し、dfダウンロード(個別銘柄との違いはここの詳しさ)
+  |  |- 関数計算(個別との違いはここの詳しさ)
+  |  |- 判定
+  |
+  |本プログラム一覧:
+    last.py これ動かすことにより作動
+    cs
+
+
+
+(1)月おきに
+1 月始まりに東証から上場企業ファイル名取得　https://www.jpx.co.jp/markets/statistics-equities/misc/01.html
+2 stocknumber_1month を作成するため　onemonth.py を実行
+ (作業ディレクトリに注意して)
+
+ https://www.jpx.co.jp/markets/statistics-equities/margin/06.html信用
+ https://www.jpx.co.jp/markets/statistics-equities/margin/04.html
+ https://nikkei225jp.com/data/sinyou.php　信用評価率
+
+(2)1日おきに
+ファイル調べる銘柄とりだす
+(お気に入りと配当サーチと保有(最低限))
+サーチかける
+エクセル保存
+個別銘柄検索 
+
+以下再度動作についてまとめる11-3-15-42
+(1)インプットにて1:サーチ,2:2個別研究とする 3配当
+(1-1)サーチの場合についてまとめる
+　インプットで全か、仕事別かをもとめる
+　価格帯初期条件の読み取り
