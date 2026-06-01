@@ -31,8 +31,10 @@ def filter1():
 
     aaalist=["9101.T","9104.T"]
     serch_df = First_filter_stocks(aaalist,max_price,min_price,min_volume, dividend_status, target_yield)
-    
-    
+
+    # 学習済みモデルがあれば MLスコア（上昇確率）列を付与（無ければ自動スキップ）
+    serch_df = add_ml_score(serch_df)
+
     tick_dict = First_select_stocks(serch_df)
     tick_list = First_count_duplicates(tick_dict)
     end_time = time.time()
