@@ -6,6 +6,7 @@ import pandas as pd
 import datetime
 from datetime import datetime
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 from onedaymarket import *
 from function import *
@@ -44,8 +45,56 @@ def stockfinancedataget(ticker,max_price,min_price,min_volume, dividend_status, 
     return df_finance
            
 
+# 並列実行のワーカー数（I/Oバウンドのため大きめでも可。APIレート制限に注意）
+DEFAULT_MAX_WORKERS = 10
+
+
+def _flatten_columns(df):
+    """yfinanceのMultiIndex列（フィールド, ティッカー）を単層列に正規化する。"""
+    if isinstance(df.columns, pd.MultiIndex):
+        df = df.copy()
+        df.columns = df.columns.get_level_values(0)
+    return df
+
+
+def download_prices_batch(tickers, end_date, max_workers=DEFAULT_MAX_WORKERS):
+    """複数銘柄の価格履歴を一括取得し、{ticker: DataFrame(単層列)} を返す。
+
+    銘柄ごとに yf.download を呼ぶ代わりに1回のリクエストでまとめて取得するため、
+    通信回数を大幅に削減できる。
+    """
+    result = {}
+    if not tickers:
+        return result
+
+    data = yf.download(
+        tickers,
+        start="1980-1-1",
+        end=end_date,
+        interval="5d",
+        group_by="ticker",
+        threads=max_workers,
+        progress=False,
+    )
+
+    # 単一銘柄のときは group_by が効かず単層列で返るため個別に扱う
+    if len(tickers) == 1:
+        result[tickers[0]] = _flatten_columns(data)
+        return result
+
+    for ticker in tickers:
+        try:
+            sub = data[ticker].dropna(how="all")
+        except (KeyError, TypeError):
+            sub = None
+        result[ticker] = sub
+    return result
+
+
 def stockdataget(ticker,end_date,dataget=0,):
-    df = yf.download(ticker, start="1980-1-1", end=end_date, interval="5d",period='1d')
+    df = yf.download(ticker, start="1980-1-1", end=end_date, interval="5d")
+    # MultiIndex列を単層に正規化（新しいyfinance互換）
+    df = _flatten_columns(df)
     # ダウンロードしたデータフレームが空でないことを確認
     #df = get_more_info(df)
     if dataget == 0:
@@ -97,34 +146,74 @@ def save_dataframe_to_csv(df, filename=None):
     """このあと基本的情報設定
     """
 
-# sub_main においてのメイン関数はこれとなる
-def First_filter_stocks(stocklist,max_price,min_price,min_volume, dividend_status, target_yield):
-    end_date = datetime.today()
-    stock_unlist =[]
-    price_inlist =[]
-    price_outlist=[]
-    stock_unlist = []
-    serch_df = pd.DataFrame()
-    total_tickers = len(stocklist)
+# 個別銘柄の指標DFを組み立てる（CPU処理。価格DFはダウンロード済みのものを使う）
+def build_stock_row(ticker, price_df, df_finance):
+    if price_df is None or price_df.empty:
+        return None
+    df = _flatten_columns(price_df)
+    df = get_calculate_trend(df)
+    df = get_calculate_oscillator(df)
+    # df の最終行を取得
+    last_row_df = df.tail(1).round(3)
+    # df_finance と last_row_df を列方向で結合
+    add_df = pd.concat([df_finance.reset_index(drop=True), last_row_df.reset_index(drop=True)], axis=1)
+    #%+四分位+個数、合計、偏差、現在偏差
+    df_vix = all_statistics_df(df).round(3)
+    add_df = pd.concat([add_df.reset_index(drop=True), df_vix.reset_index(drop=True)], axis=1)
+    #クロス+クロス統計(移動平均線、MACD)
+    df_cross = all_cross_df(df)
+    add_df = pd.concat([add_df.reset_index(drop=True), df_cross.reset_index(drop=True)], axis=1)
+    return add_df
 
-    for index, ticker in enumerate(stocklist):
-        print(index)
-        add_df = pd.DataFrame()
+
+# sub_main においてのメイン関数はこれとなる
+def First_filter_stocks(stocklist,max_price,min_price,min_volume, dividend_status, target_yield, max_workers=DEFAULT_MAX_WORKERS):
+    end_date = datetime.today()
+    stock_unlist = []
+    price_inlist = []
+    price_outlist = []
+    finance_map = {}
+
+    # フェーズ1: ファンダ情報の取得・条件判定を並列実行
+    # （銘柄ごとに .info / .history を直列で叩いていた最重量のネットワーク処理を並列化）
+    def _screen(ticker):
         try:
-            add_df,price_outlist,price_inlist = stockanalysis(ticker, end_date, add_df,price_outlist,price_inlist,max_price,min_price,min_volume, dividend_status, target_yield)  # `stockanalysis` は事前定義された関数を仮定
-        except Exception as e:
+            return ticker, stockfinancedataget(
+                ticker, max_price, min_price, min_volume, dividend_status, target_yield
+            ), None
+        except Exception as e:  # noqa: BLE001 個別銘柄のAPIエラーは握りつぶしつつ記録
+            return ticker, None, e
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # map は入力順を保つため、結果の並び順は元のループと同じになる
+        for ticker, df_finance, err in executor.map(_screen, stocklist):
+            if err is not None:
+                stock_unlist.append(ticker)
+                continue
+            if df_finance is None or df_finance.empty:
+                price_outlist.append(ticker)
+            else:
+                price_inlist.append(ticker)
+                finance_map[ticker] = df_finance
+
+    print(f"ファンダ条件通過: {len(price_inlist)}銘柄 / 価格履歴を一括取得します")
+
+    # フェーズ2: 条件通過した銘柄の価格履歴を一括ダウンロード（通信回数を激減）
+    price_map = download_prices_batch(price_inlist, end_date, max_workers=max_workers)
+
+    # フェーズ3: 指標を計算して行を組み立て、最後に一度だけ concat（ループ内concatのO(n^2)を解消）
+    rows = []
+    for ticker in price_inlist:
+        try:
+            add_df = build_stock_row(ticker, price_map.get(ticker), finance_map[ticker])
+        except Exception:  # noqa: BLE001 指標計算で落ちた銘柄は除外
             stock_unlist.append(ticker)
             continue
-
         if add_df is not None and not add_df.empty:
-            serch_df = pd.concat([serch_df, add_df], ignore_index=True)
+            rows.append(add_df)
 
-        # 進捗を10%ごとに表示
-        percentage = (index + 1) * 100 // total_tickers
-        if percentage % 10 == 0 and percentage != 0:
-            print(f"{percentage}% 完了")
-        
-        #ここまで個別調査のＡＰＩが繰り返しされこれ以降一回の実行
+    serch_df = pd.concat(rows, ignore_index=True) if rows else pd.DataFrame()
+
     save_dataframe_to_csv(serch_df)
     save_to_excel_stock(serch_df)
 
@@ -132,7 +221,7 @@ def First_filter_stocks(stocklist,max_price,min_price,min_volume, dividend_statu
     print(f"{len(stock_unlist)}がAPIによるエラーが発生した。")
     print(f"{len(price_inlist)}が条件に該当しました")
     print(f"{len(price_outlist)}を条件により排除しました")
-    
+
     return serch_df
 
 def First_select_stocks(df):
