@@ -83,49 +83,59 @@ def calculate_parabolic_sar(df, initial_af=0.02, max_af=0.2, step_af=0.02):
     :return: パラボリックSARを追加したDataFrame
     """
     
+    # numpy配列で位置参照（ラベルindexに依存せず高速）
+    high = df['High'].to_numpy(dtype=float)
+    low = df['Low'].to_numpy(dtype=float)
+    n = len(df)
+
+    if n == 0:
+        df['Parabolic_SAR'] = []
+        df['Parabolic_SAR_difference'] = df["Close"] - df['Parabolic_SAR']
+        return df
+
     # 初期設定
-    sar = df['Low'][0]  # SARの初期値として、最初のLowを使用
-    ep = df['High'][0]  # エクストリームポイント (最初は最初のHigh)
+    sar = low[0]   # SARの初期値として、最初のLowを使用
+    ep = high[0]   # エクストリームポイント (最初は最初のHigh)
     af = initial_af     # 初期アクセラレーションファクター
     uptrend = True      # 最初は上昇トレンドからスタート
-    
+
     # 結果を保存するリスト
     sar_list = []
-    
-    for i in range(1, len(df)):
+
+    for i in range(1, n):
         prev_sar = sar  # 前回のSAR
-        
+
         if uptrend:
             sar = prev_sar + af * (ep - prev_sar)  # SARの更新
-            if df['Low'][i] < sar:  # トレンド転換の判定
+            if low[i] < sar:  # トレンド転換の判定
                 uptrend = False
                 sar = ep  # 転換後のSAR初期値はエクストリームポイント
-                ep = df['Low'][i]  # エクストリームポイントをリセット
+                ep = low[i]  # エクストリームポイントをリセット
                 af = initial_af  # アクセラレーションファクターをリセット
         else:
             sar = prev_sar + af * (ep - prev_sar)
-            if df['High'][i] > sar:
+            if high[i] > sar:
                 uptrend = True
                 sar = ep
-                ep = df['High'][i]
+                ep = high[i]
                 af = initial_af
-        
+
         # SARの上昇・下降トレンドに応じてエクストリームポイントを更新
         if uptrend:
-            if df['High'][i] > ep:
-                ep = df['High'][i]
+            if high[i] > ep:
+                ep = high[i]
                 af = min(af + step_af, max_af)  # アクセラレーションファクターを増加
         else:
-            if df['Low'][i] < ep:
-                ep = df['Low'][i]
+            if low[i] < ep:
+                ep = low[i]
                 af = min(af + step_af, max_af)
-        
+
         sar_list.append(sar)
-    
+
     # sar_list の長さを df の長さに合わせる例
-    if len(sar_list) < len(df):
+    if len(sar_list) < n:
         sar_list.append(None)  # None で埋める例
-        
+
     df['Parabolic_SAR'] = [None] + sar_list[:-1]
     df['Parabolic_SAR_difference'] = df["Close"]- df['Parabolic_SAR']
 
