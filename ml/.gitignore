@@ -1,0 +1,4 @@
+# 学習済みモデル等の生成物
+model.joblib
+*.joblib
+__pycache__/
