@@ -224,6 +224,45 @@ def First_filter_stocks(stocklist,max_price,min_price,min_volume, dividend_statu
 
     return serch_df
 
+def add_ml_score(serch_df, model_path=None, start="2015-01-01", interval="1d"):
+    """serch_df の各銘柄に、学習済みモデルの上昇確率を 'MLスコア' 列として付与する。
+
+    ml/ の依存（scikit-learn 等）や学習済みモデルが無い場合は、警告を出して
+    serch_df をそのまま返す（第1フィルター本体は ML 無しでも動作する）。
+    `python -m ml.run_ml train` でモデルを作成しておくこと。
+    """
+    if serch_df is None or serch_df.empty or "銘柄番号" not in serch_df.columns:
+        return serch_df
+
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+
+    try:
+        from ml.model import load_model, score_latest
+    except Exception as e:  # noqa: BLE001 ml依存が無くても本体は動かす
+        print(f"MLスコアをスキップ（ml/ の読み込みに失敗）: {e}")
+        return serch_df
+
+    path = model_path or os.path.join(repo_root, "ml", "model.joblib")
+    if not os.path.exists(path):
+        print(f"MLスコアをスキップ（モデル未学習: {path}）。"
+              f"`python -m ml.run_ml train` で作成してください。")
+        return serch_df
+
+    try:
+        model = load_model(path)
+        tickers = serch_df["銘柄番号"].astype(str).tolist()
+        ranked = score_latest(tickers, model, start=start, interval=interval)
+        score_map = dict(zip(ranked["ticker"].astype(str), ranked["ml_score"]))
+        serch_df = serch_df.copy()
+        serch_df["MLスコア"] = serch_df["銘柄番号"].astype(str).map(score_map)
+        print(f"MLスコアを付与しました（{serch_df['MLスコア'].notna().sum()}/{len(serch_df)}銘柄）")
+    except Exception as e:  # noqa: BLE001 スコア計算失敗時も本体は継続
+        print(f"MLスコア計算でエラー: {e}")
+    return serch_df
+
+
 def First_select_stocks(df):
     """
     データフレーム内の指定された要素でランキングを作成し、
@@ -246,6 +285,10 @@ def First_select_stocks(df):
     
     descending_elements = ["MACD_Signal_difference",'MACD_Signal_Line_Next_Cross_Day',
                            'DI+_DI-_Next_Cross_Day']  # 大きい値が上位
+
+    # MLスコア（上昇確率）が付与されていればランキング基準に加える（大きいほど上位）
+    if 'MLスコア' in df.columns:
+        descending_elements = descending_elements + ['MLスコア']
 
     result={}
 
